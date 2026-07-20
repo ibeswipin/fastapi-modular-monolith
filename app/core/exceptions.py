@@ -35,6 +35,10 @@ class EmailAlreadyExistsError(ConflictError):
     pass
 
 
+class CannotModifyOwnRoleError(ForbiddenError):
+    pass
+
+
 # auth module
 class InvalidCredentialsError(UnauthorizedError):
     pass

@@ -2,7 +2,7 @@ import datetime
 
 from sqlalchemy.exc import IntegrityError
 
-from app.core.exceptions import EmailAlreadyExistsError, UserNotFoundError
+from app.core.exceptions import CannotModifyOwnRoleError, EmailAlreadyExistsError, UserNotFoundError
 from app.modules.users.models import Role, User
 from app.modules.users.repository import UserRepository
 from app.modules.users.schemas import UserCreate, UserUpdate
@@ -59,6 +59,23 @@ class UserService:
         changes = data.model_dump(exclude_unset=True)
         for field, value in changes.items():
             setattr(user, field, value)
+        return user
+
+    async def update_role(self, user_id: int, new_role: Role, requested_by: int) -> User:
+        """requested_by is the acting admin's own id — an admin can't change their own
+        role through this endpoint, so a lone admin can't accidentally lock themselves
+        out of admin access. (Doesn't protect against demoting the *last* admin via a
+        second admin account — that's a further hardening step, not implemented here.)"""
+        if user_id == requested_by:
+            raise CannotModifyOwnRoleError("You cannot change your own role")
+        return await self.set_role(user_id, new_role)
+
+    async def set_role(self, user_id: int, new_role: Role) -> User:
+        """No self-check — update_role (HTTP) adds that policy on top of this primitive.
+        Used directly by trusted, non-HTTP callers (see app/cli.py) that need to bootstrap
+        the first admin, where "requested by another admin" doesn't apply."""
+        user = await self.get_by_id(user_id)
+        user.role = new_role
         return user
 
     async def delete_user(self, user_id: int) -> None:

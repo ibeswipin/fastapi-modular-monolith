@@ -1,13 +1,14 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 
 from app.core.dependencies import DbSession
 from app.core.exceptions import ForbiddenError
+from app.core.pagination import Page, PaginationDep
 from app.modules.auth.dependencies import require_role
 from app.modules.users.models import Role, User
 from app.modules.users.repository import UserRepository
-from app.modules.users.schemas import UserRead, UserUpdate
+from app.modules.users.schemas import RoleUpdate, UserRead, UserUpdate
 from app.modules.users.service import UserService
 
 
@@ -27,7 +28,7 @@ class UsersController:
             "/me", self.get_me, methods=["GET"], response_model=UserRead, summary="Get the current user's profile"
         )
         self.router.add_api_route(
-            "/users", self.list_users, methods=["GET"], response_model=list[UserRead], summary="List users (admin only)"
+            "/users", self.list_users, methods=["GET"], response_model=Page[UserRead], summary="List users (admin only)"
         )
         self.router.add_api_route(
             "/users/{user_id}",
@@ -45,6 +46,14 @@ class UsersController:
             description="Self or admin only. Updates first/last name.",
         )
         self.router.add_api_route(
+            "/users/{user_id}/role",
+            self.update_role,
+            methods=["PATCH"],
+            response_model=UserRead,
+            summary="Change a user's role (admin only)",
+            description="Admins cannot change their own role.",
+        )
+        self.router.add_api_route(
             "/users/{user_id}", self.delete_user, methods=["DELETE"], status_code=204, summary="Delete a user (admin only)"
         )
 
@@ -55,11 +64,10 @@ class UsersController:
         self,
         service: UserServiceDep,
         _admin: Annotated[User, Depends(require_role(Role.ADMIN))],
-        offset: Annotated[int, Query(ge=0)] = 0,
-        limit: Annotated[int, Query(ge=1, le=100)] = 50,
-    ) -> list[UserRead]:
-        users, _total = await service.list_users(offset=offset, limit=limit)
-        return [UserRead.model_validate(user) for user in users]
+        pagination: PaginationDep,
+    ) -> Page[UserRead]:
+        users, total = await service.list_users(offset=pagination.offset, limit=pagination.page_size)
+        return Page.build([UserRead.model_validate(user) for user in users], total, pagination)
 
     async def get_user(
         self,
@@ -81,6 +89,16 @@ class UsersController:
             raise ForbiddenError("You can only update your own profile")
 
         user = await service.update_user(user_id, payload)
+        return UserRead.model_validate(user)
+
+    async def update_role(
+        self,
+        user_id: int,
+        payload: RoleUpdate,
+        service: UserServiceDep,
+        current_admin: Annotated[User, Depends(require_role(Role.ADMIN))],
+    ) -> UserRead:
+        user = await service.update_role(user_id, payload.role, requested_by=current_admin.id)
         return UserRead.model_validate(user)
 
     async def delete_user(

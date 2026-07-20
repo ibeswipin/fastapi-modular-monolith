@@ -33,3 +33,9 @@ class UserUpdate(BaseModel):
 
     first_name: str | None = None
     last_name: str | None = None
+
+
+class RoleUpdate(BaseModel):
+    """PATCH /users/{id}/role payload."""
+
+    role: Role
