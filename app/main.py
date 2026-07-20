@@ -11,8 +11,7 @@ from app.core.exceptions import (
     RateLimitExceededError,
     UnauthorizedError,
 )
-from app.modules.auth.router import router as auth_router
-from app.modules.users.router import router as users_router
+from app.modules import router as modules_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -20,8 +19,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
-app.include_router(auth_router)
-app.include_router(users_router)
+app.include_router(modules_router)
 
 
 def _domain_error_handler(status_code: int, headers: dict[str, str] | None = None):
