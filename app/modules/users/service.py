@@ -3,9 +3,12 @@ import datetime
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import CannotModifyOwnRoleError, EmailAlreadyExistsError, UserNotFoundError
+from app.core.logging import get_logger
 from app.modules.users.models import Role, User
 from app.modules.users.repository import UserRepository
 from app.modules.users.schemas import UserCreate, UserUpdate
+
+logger = get_logger(__name__)
 
 
 class UserService:
@@ -76,11 +79,13 @@ class UserService:
         the first admin, where "requested by another admin" doesn't apply."""
         user = await self.get_by_id(user_id)
         user.role = new_role
+        logger.info("role changed: user_id=%s new_role=%s", user_id, new_role.value)
         return user
 
     async def delete_user(self, user_id: int) -> None:
         user = await self.get_by_id(user_id)
         await self._repository.delete(user)
+        logger.info("user deleted: user_id=%s email=%s", user_id, user.email)
 
     async def set_verification_code(self, user_id: int, code: str, expires_at: datetime.datetime) -> User:
         user = await self.get_by_id(user_id)

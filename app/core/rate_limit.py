@@ -5,6 +5,9 @@ from fastapi import Depends, Request
 
 from app.core.config import settings
 from app.core.exceptions import RateLimitExceededError
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 _redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
 
@@ -30,6 +33,7 @@ class RateLimiter:
     async def check(self, key: str, limit: int, window_seconds: int) -> None:
         count = await self.increment(key, window_seconds)
         if count > limit:
+            logger.warning("rate limit exceeded: key=%s count=%d limit=%d", key, count, limit)
             raise RateLimitExceededError("Too many requests, try again later")
 
     async def reset(self, key: str) -> None:

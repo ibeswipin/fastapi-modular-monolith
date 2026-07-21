@@ -9,6 +9,7 @@ cleanup of unverified accounts.
 ```
 app/
   main.py            FastAPI app: mounts routers, registers exception handlers
+  cli.py              Operator CLI: python -m app.cli — create/promote an admin
   core/               Shared infrastructure — no business logic
     config.py         Settings (env vars), single source of truth for config
     database.py        Async SQLAlchemy engine/session, get_db dependency
@@ -16,7 +17,8 @@ app/
     notifications.py    NotificationService interface + console dev impl
     rate_limit.py         Redis-backed RateLimiter: fixed-window limits + account lockout
     pagination.py          Generic Page[T] envelope + PaginationParams, reused by any list endpoint
-    exceptions.py             Domain exceptions (AppError hierarchy)
+    logging.py                get_logger(__name__) — stdlib logging, configured once
+    exceptions.py                 Domain exceptions (AppError hierarchy)
     dependencies.py             App-wide FastAPI dependencies (DbSession)
   modules/
     users/              Owns the `users` table and everything about a user

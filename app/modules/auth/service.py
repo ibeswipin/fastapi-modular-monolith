@@ -7,6 +7,7 @@ from app.core.exceptions import (
     InvalidVerificationCodeError,
     UserNotFoundError,
 )
+from app.core.logging import get_logger
 from app.core.notifications import NotificationService
 from app.core.rate_limit import RateLimiter
 from app.core.security import SecurityService, TokenType
@@ -14,6 +15,8 @@ from app.modules.auth.schemas import TokenResponse
 from app.modules.users.models import User
 from app.modules.users.schemas import UserCreate
 from app.modules.users.service import UserService
+
+logger = get_logger(__name__)
 
 
 def _as_aware_utc(value: datetime.datetime | None) -> datetime.datetime | None:
@@ -50,20 +53,24 @@ class AuthService:
             UserCreate(email=email, password_hash=password_hash, first_name=first_name, last_name=last_name)
         )
         await self._issue_and_send_verification_code(user)
+        logger.info("user signed up: email=%s user_id=%s", email, user.id)
         return user
 
     async def login(self, email: str, password: str) -> TokenResponse:
         lock_key = f"lockout:login:{email}"
         if await self._rate_limiter.is_locked(lock_key):
+            logger.warning("login blocked, account locked: email=%s", email)
             raise AccountLockedError("Account temporarily locked due to too many failed login attempts")
 
         # Same error for "no such user" and "wrong password" — avoids leaking which emails are registered.
         user = await self._users.get_by_email(email)
         if user is None or not self._security.verify_password(password, user.password_hash):
             await self._register_login_failure(email, lock_key)
+            logger.warning("login failed: email=%s", email)
             raise InvalidCredentialsError("Invalid email or password")
 
         await self._rate_limiter.reset(f"login_failures:{email}")
+        logger.info("login success: email=%s user_id=%s", email, user.id)
         return self._issue_token_pair(user.id)
 
     async def _register_login_failure(self, email: str, lock_key: str) -> None:
@@ -72,6 +79,7 @@ class AuthService:
         if failure_count >= self._max_login_failures:
             await self._rate_limiter.lock(lock_key, window_seconds)
             await self._rate_limiter.reset(f"login_failures:{email}")
+            logger.warning("account locked after %d failed attempts: email=%s", failure_count, email)
 
     async def refresh(self, refresh_token: str) -> TokenResponse:
         user_id = self._security.decode_token(refresh_token, TokenType.REFRESH)
@@ -92,7 +100,9 @@ class AuthService:
         if not (code_matches and not_expired):
             raise InvalidVerificationCodeError("Verification code is invalid or expired")
 
-        return await self._users.verify_user(user)
+        verified = await self._users.verify_user(user)
+        logger.info("email verified: email=%s user_id=%s", email, user.id)
+        return verified
 
     async def _issue_and_send_verification_code(self, user: User) -> None:
         code = self._security.generate_verification_code()
